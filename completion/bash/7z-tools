@@ -1,0 +1,189 @@
+#! /bin/bash
+
+_7z-tools_open()
+{
+  local cur=${COMP_WORDS[COMP_CWORD]}
+  local prev_args=("${COMP_WORDS[@]:1:COMP_CWORD-1}")
+  local state='archive'
+  local index=0
+
+  if [ -n "$cur" -a "${cur:0:1}" == '-' ]; then
+    COMPREPLY=( $(compgen -W "--help" -- $cur) )
+    return
+  fi
+
+  for arg in "${prev_args[@]}"; do
+    index=$(( index + 1 ))
+    case "$arg" in
+      --help)
+        return
+        ;;
+      *)
+        case "$state" in
+          archive)
+            state='path'
+            ;;
+          path)
+            state='done'
+            ;;
+        esac
+        ;;
+    esac
+  done
+
+  case "$state" in
+    archive)
+      # use the same completion as `cat`
+      _longopt
+      ;;
+    path)
+      # only complete directories with a slash and without adding trailing space
+      # uses a little trick to avoid switching to the next argument
+      COMPREPLY=( $(compgen -S / -d -- $cur) )
+      if [ "${#COMPREPLY[@]}" -eq 1 ]; then
+        COMPREPLY+=( "${COMPREPLY[0]}." )
+      fi
+      ;;
+  esac
+
+  return
+}
+
+_7z-tools_save()
+{
+  local cur=${COMP_WORDS[COMP_CWORD]}
+  local prev_args=("${COMP_WORDS[@]:1:COMP_CWORD-1}")
+  local state='path'
+  local index=0
+
+  if [ -n "$cur" -a "${cur:0:1}" == '-' ]; then
+    COMPREPLY=( $(compgen -W "--help" -- $cur) )
+    return
+  fi
+
+  for arg in "${prev_args[@]}"; do
+    index=$(( index + 1 ))
+    case "$arg" in
+      --help)
+        return
+        ;;
+      *)
+        case "$state" in
+          path)
+            state='archive'
+            ;;
+          archive)
+            state='done'
+            ;;
+        esac
+        ;;
+    esac
+  done
+
+  case "$state" in
+    archive)
+      # use the same completion as `cat`
+      _longopt
+      ;;
+    path)
+      # only complete directories with a slash and without adding trailing space
+      # uses a little trick to avoid switching to the next argument
+      COMPREPLY=( $(compgen -S / -d -- $cur) )
+      if [ "${#COMPREPLY[@]}" -eq 1 ]; then
+        COMPREPLY+=( "${COMPREPLY[0]}." )
+      fi
+      ;;
+  esac
+
+  return
+}
+
+_7z-tools_close()
+{
+  local cur=${COMP_WORDS[COMP_CWORD]}
+  local prev_args=("${COMP_WORDS[@]:1:COMP_CWORD-1}")
+  local state='path'
+  local index=0
+
+  if [ -n "$cur" -a "${cur:0:1}" == '-' ]; then
+    COMPREPLY=( $(compgen -W "--help" -- $cur) )
+    return
+  fi
+
+  for arg in "${prev_args[@]}"; do
+    index=$(( index + 1 ))
+    case "$arg" in
+      --help)
+        return
+        ;;
+      *)
+        case "$state" in
+          path)
+            state='done'
+            ;;
+        esac
+        ;;
+    esac
+  done
+
+  case "$state" in
+    path)
+      # only complete directories with a slash and without adding trailing space
+      # uses a little trick to avoid switching to the next argument
+      COMPREPLY=( $(compgen -S / -d -- $cur) )
+      if [ "${#COMPREPLY[@]}" -eq 1 ]; then
+        COMPREPLY+=( "${COMPREPLY[0]}." )
+      fi
+      ;;
+  esac
+
+  return
+}
+
+_7z-tools()
+{
+  local cur=${COMP_WORDS[COMP_CWORD]}
+  local prev_args=("${COMP_WORDS[@]:1:COMP_CWORD-1}")
+  local index=0
+
+  COMPREPLY=()
+
+  for arg in "${prev_args[@]}"; do
+    index=$(( index + 1 ))
+    case "$arg" in
+      --help)
+        return
+        ;;
+      open)
+        COMP_WORDS=("${COMP_WORDS[@]:index}")
+        COMP_CWORD=$(( COMP_CWORD - index ))
+        _7z-tools_open
+        return
+        ;;
+      save)
+        COMP_WORDS=("${COMP_WORDS[@]:index}")
+        COMP_CWORD=$(( COMP_CWORD - index ))
+        _7z-tools_save
+        return
+        ;;
+      close)
+        COMP_WORDS=("${COMP_WORDS[@]:index}")
+        COMP_CWORD=$(( COMP_CWORD - index ))
+        _7z-tools_close
+        return
+        ;;
+      *)
+        return
+        ;;
+    esac
+  done
+
+  if [ "${cur:0:1}" == '-' ]; then
+    COMPREPLY=( $(compgen -W "--help" -- $cur) )
+  else
+    COMPREPLY=( $(compgen -W "open save close" -- $cur) )
+  fi
+
+  return
+}
+complete -F _7z-tools 7z-tools

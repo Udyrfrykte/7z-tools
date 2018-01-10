@@ -1,0 +1,261 @@
+#!/bin/bash
+set -e
+
+##########
+# USAGES #
+##########
+
+function usage {
+cat <<EOF
+Usage: $(basename $0) COMMAND
+
+Facilitate open/modify/save operations on ciphered 7z archives.
+
+Options:
+  --help  print usage
+
+Commands:
+  open    open the archive in a defined location
+  save    save the modified archive content
+  close   close an opended archive
+
+Run '$(basename $0) COMMAND --help' for more information on a command.
+EOF
+}
+
+
+function usage_open {
+cat <<EOF
+Usage: $(basename $0) open ARCHIVE PATH
+
+Open a 7z archive to a certain path.
+
+Arguments:
+  ARCHIVE  the 7z archive to open
+  PATH     the path that will point to the extracted archive (must not exist, but its parent directory must)
+EOF
+}
+
+
+function usage_save {
+cat <<EOF
+Usage: $(basename $0) save PATH ARCHIVE
+
+Save the content of an extraction path to an archive (backup the old one if it already exists).
+
+Argument:
+  PATH  the path that points to the extracted archive
+  ARCHIVE  the 7z archive to create
+EOF
+}
+
+
+function usage_close {
+cat <<EOF
+Usage: $(basename $0) close PATH
+
+Close an extracted archive.
+
+Argument:
+  PATH  the path that points to the extracted archive
+EOF
+}
+
+####################
+# HELPER FUNCTIONS #
+####################
+
+###############
+# SUBCOMMANDS #
+###############
+
+function 7z_open {
+  step='archive'
+
+  while [ -n "$1" ]; do
+    case "$1" in
+      --help)
+        usage_open
+        exit 0
+        ;;
+      *)
+        case "$step" in
+          archive)
+            archive="$1"
+            step='path'
+            ;;
+          path)
+            extraction_path="$1"
+            step='done'
+            ;;
+          *)
+            usage_open
+            exit 1
+            ;;
+        esac
+        ;;
+    esac
+    shift
+  done
+
+  if [ "$step" != 'done' ]; then
+    usage_open
+    exit 1
+  fi
+
+  echo "called with archive: '${archive}' and path: '${extraction_path}'."
+
+  if [ -f "${archive}"  ]; then
+    echo "Error: no such file '${archive}'" >&2
+    exit 1
+  fi
+  if [ -e "$extraction_path" ]; then
+    echo "Error: extraction path '${extraction_path}' already exist" >&2
+    exit 1
+  fi
+  if [ ! -d "$(basename "$extraction_path")" ]; then
+    echo "Error: extraction path '${extraction_path}' parent directory doesn't exist" >&2
+    exit 1
+  fi
+
+  extraction_dir="$(mktemp -d)"
+  echo "created temp directory ${extraction_dir}"
+  ln -sf "$extraction_dir" "$extraction_path"
+  echo "created ${extraction_path} as link to ${extraction_dir}"
+  7z x -o"$extraction_dir" "$archive"
+}
+
+
+function 7z_save {
+  step='path'
+
+  while [ -n "$1" ]; do
+    case "$1" in
+      --help)
+        usage_save
+        exit 0
+        ;;
+      *)
+        case "$step" in
+          path)
+            extraction_path="$1"
+            step='archive'
+            ;;
+          archive)
+            archive="$1"
+            step='done'
+            ;;
+          *)
+            usage_save
+            exit 1
+            ;;
+        esac
+        ;;
+    esac
+    shift
+  done
+
+  if [ "$step" != 'done' ]; then
+    usage_save
+    exit 1
+  fi
+  echo "called with path: '${extraction_path} and archive: '${archive}''."
+  extraction_dir="$(readlink "$extraction_path")"
+  absolute_archive="$(cd "$(dirname "$archive")" && pwd)/$(basename "$archive")"
+  echo "saving temp directory ${extraction_dir} to archive ${absolute_archive}"
+  if [ -r "$archive" ]; then
+   backup_archive=""${archive}.$(date '+%Y-%m-%d_%Hh%Mm%Ss').backup""
+   echo "creating backup: ${backup_archive}"
+   mv "$archive" "$backup_archive"
+  else
+   rm -f "$archive"
+  fi
+  (
+   cd "$extraction_dir"
+   7z a -p -mhe "$absolute_archive" *
+  )
+}
+
+
+function 7z_close {
+  step='path'
+
+  while [ -n "$1" ]; do
+    case "$1" in
+      --help)
+        usage_close
+        exit 0
+        ;;
+      *)
+        case "$step" in
+          path)
+            extraction_path="$1"
+            step='done'
+            ;;
+          *)
+            usage_close
+            exit 1
+            ;;
+        esac
+        ;;
+    esac
+    shift
+  done
+
+  if [ "$step" != 'done' ]; then
+    usage_close
+    exit 1
+  fi
+
+  echo "called with path: '${extraction_path}'."
+
+  # remove trailing slashes
+  while [ "$extraction_path" != "${extraction_path%/}" ]; do
+    extraction_path="${extraction_path%/}"
+  done
+
+  echo "path cleaned to: '${extraction_path}'."
+
+  if [ ! -L "$extraction_path" -a ! -d "$extraction_path" ]; then
+    echo "Error: path '$extraction_path' is not a link to a directory" >&2
+    exit 1
+  fi
+
+  extraction_dir="$(readlink "$extraction_path")"
+
+  if basename "$extraction_dir" | grep -vq '^tmp\.'); then
+    echo "Error: link target '$extraction_dir' does not look like a temp directory" >&2
+    exit 1
+  fi
+
+  echo "deleting temp directory ${extraction_dir}"
+  rm -rf "$extraction_dir"
+  rm "$extraction_path"
+}
+
+###############
+# MAIN SCRIPT #
+###############
+
+directory='.'
+while [ -n "$1" -a -z "${tools_command}" ]; do
+  case "$1" in
+    --help)
+      usage
+      exit 0
+      ;;
+    open|save|close)
+      tools_command="$1"
+      ;;
+  esac
+  shift
+done
+
+if [ -z "${tools_command}" ]; then
+  echo "Error: $(basename $0) requires a command"
+  echo
+  usage
+  exit 1
+fi
+
+7z_${tools_command} "$@"
