@@ -105,7 +105,7 @@ function 7z_open {
 
   echo "called with archive: '${archive}' and path: '${extraction_path}'."
 
-  if [ -f "${archive}"  ]; then
+  if [ ! -f "${archive}" ]; then
     echo "Error: no such file '${archive}'" >&2
     exit 1
   fi
@@ -113,7 +113,7 @@ function 7z_open {
     echo "Error: extraction path '${extraction_path}' already exist" >&2
     exit 1
   fi
-  if [ ! -d "$(basename "$extraction_path")" ]; then
+  if [ ! -d "$(dirname "$extraction_path")" ]; then
     echo "Error: extraction path '${extraction_path}' parent directory doesn't exist" >&2
     exit 1
   fi
@@ -159,20 +159,37 @@ function 7z_save {
     usage_save
     exit 1
   fi
+
   echo "called with path: '${extraction_path} and archive: '${archive}''."
-  extraction_dir="$(readlink "$extraction_path")"
-  absolute_archive="$(cd "$(dirname "$archive")" && pwd)/$(basename "$archive")"
-  echo "saving temp directory ${extraction_dir} to archive ${absolute_archive}"
-  if [ -r "$archive" ]; then
-   backup_archive=""${archive}.$(date '+%Y-%m-%d_%Hh%Mm%Ss').backup""
-   echo "creating backup: ${backup_archive}"
-   mv "$archive" "$backup_archive"
-  else
-   rm -f "$archive"
+
+  # remove trailing slashes
+  while [ "$extraction_path" != "${extraction_path%/}" ]; do
+    extraction_path="${extraction_path%/}"
+  done
+
+  echo "path cleaned to: '${extraction_path}'."
+
+  if [ ! -d "$extraction_path" ]; then
+    echo "Error: path '$extraction_path' is not a directory" >&2
+    exit 1
   fi
+
+  absolute_archive="$(cd "$(dirname "$archive")" && pwd)/$(basename "$archive")"
+  echo "saving directory ${extraction_path} to archive ${absolute_archive}"
+
+  if [ -e "$archive" ]; then
+    if [ -r "$archive" ]; then
+      backup_archive=""${archive}.$(date '+%Y-%m-%d_%Hh%Mm%Ss').backup""
+      echo "creating backup: ${backup_archive}"
+      mv "$archive" "$backup_archive"
+   else
+      echo "Error: '$archive' exists and is not a regular file" >&2
+    fi
+  fi
+
   (
-   cd "$extraction_dir"
-   7z a -p -mhe "$absolute_archive" *
+    cd "$extraction_path"
+    7z a -p -mhe "$absolute_archive" *
   )
 }
 
@@ -223,7 +240,7 @@ function 7z_close {
 
   extraction_dir="$(readlink "$extraction_path")"
 
-  if basename "$extraction_dir" | grep -vq '^tmp\.'); then
+  if basename "$extraction_dir" | grep -vq '^tmp\.'; then
     echo "Error: link target '$extraction_dir' does not look like a temp directory" >&2
     exit 1
   fi
